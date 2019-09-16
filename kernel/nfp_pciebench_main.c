@@ -168,6 +168,37 @@ static const struct file_operations npb_dma_addrs_fops = {
 	.release = single_release,
 };
 
+void *kw_addrs[4];
+
+static ssize_t myread(struct file *file, char __user *ubuf, size_t count, loff_t *ppos)
+{
+	int i;
+	//void __iomem *vmem;
+
+	printk("Print first byte for 4 addrs\n");
+	for (i = 0; i < 4; ++i) {
+		printk("%px: %d\n", kw_addrs[i], *((unsigned int*)kw_addrs[i]));
+		*((unsigned int*)kw_addrs[i]) = 7;
+		//printk("%px: %d\n", (void*)((long int)kw_addrs[i] & 0xFFFFFFFFF), *((unsigned int*) ((long int)kw_addrs[i] & 0xFFFFFFFFF)));
+		//printk( KERN_DEBUG "TEST\n");
+		//vmem = ioremap_nocache((resource_size_t)(kw_addrs[i]) & 0xFFFFFFFFFF, 1);
+		//printk("(%px): %d\n", vmem, *((unsigned int*)vmem));
+		//printk("(%px)\n", vmem);
+		//iounmap(vmem);
+	}
+	//vmem = ioremap_nocache(0xf2d800000, 1);
+	//printk("0xf2d800000(%px): %d\n", vmem, *((unsigned int*)vmem));
+
+	return 0;
+}
+
+// Kiwan: Test
+static struct file_operations myops = {
+	.owner = THIS_MODULE,
+	.read = myread,
+	//.release = single_release,
+};
+
 /*
  * procfs interface for userspace to get buffer size
  */
@@ -340,6 +371,15 @@ static int npb_init(struct nfp_pciebench *npb)
 	}
 
 	id = nfp_cpp_device_id(npb->cpp);
+
+	/* Kiwan: Test: Create PROC to read DMAed data */
+	kw_addrs[0] = npb->buf[0];
+	kw_addrs[1] = npb->buf[1];
+	kw_addrs[2] = npb->buf[2];
+	kw_addrs[3] = npb->buf[3];
+	//*((unsigned int*)npb->buf[0]) = 0;
+	printk("TEST: %px: %d\n", npb->buf[0], *((unsigned int*)npb->buf[0]));
+	proc_create("pciebench_test", 0644, NULL, &myops);
 
 	/* Create proc interfaces */
 	scnprintf(buf, sizeof(buf), NFP_PCIEBENCH_PROC_DMA_ADDRS, id);

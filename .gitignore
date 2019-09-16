@@ -5,6 +5,8 @@
 *.cmd
 *.ucp
 *.uci
+*.nffw
+*.ko
 /kernel/*.mk
 /kernel/nfpcore
 /nfp-drv-kmods

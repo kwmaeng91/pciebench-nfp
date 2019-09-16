@@ -564,6 +564,7 @@ def main():
 
     (options, _) = parser.parse_args()
 
+    print(options)
     pciebench.debug.VLVL = options.verbose
 
     outdir = options.outdir

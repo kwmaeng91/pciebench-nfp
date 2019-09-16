@@ -2,7 +2,7 @@ CC=gcc
 
 CFLAGS=-Wall -Werror
 LIBS?=-lnfp
-LDFLAGS>?=-L/opt/netronome/lib
+LDFLAGS?=-L/opt/netronome/lib
 
 OBJS = nfp-pciebench-helper.o
 
@@ -14,4 +14,4 @@ clean:
 	rm -f *.o
 
 %.o: %.c $(DEPS)
-	$(CC) -c -o $@ $< $(CFLAGS)
+	$(CC) -c -I /opt/netronome/include -o $@ $< $(CFLAGS)

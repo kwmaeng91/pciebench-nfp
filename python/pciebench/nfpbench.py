@@ -54,6 +54,7 @@ FW_FILE = "./pciebench.fw"
 def _exec_cmd(cmd):
     """Execute a command and return a tuple of return code and output"""
     trc(cmd)
+    print(cmd)
     proc = subprocess.Popen(cmd, bufsize=16384, shell=True, close_fds=True,
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE)
@@ -83,7 +84,7 @@ def _thrash_cache():
 def _get_hwinfo(nfp_num):
     """Execute nfp-hwinfo and return the result as a dictionary"""
     ret = {}
-    _, out = _exec_cmd("nfp-hwinfo -n %d" % nfp_num)
+    _, out = _exec_cmd("/opt/netronome/bin/nfp-hwinfo -n %d" % nfp_num)
     out = out.decode('ascii')
     lines = out.split('\n')
     for line in lines:
@@ -190,24 +191,24 @@ class NFPBench(object):
 
     def _sym_write(self, sym, val):
         """Write value(s) to symbol"""
-        _, _ = _exec_cmd("nfp-rtsym -n %d %s %s" % (self.nfp_num, sym, val))
+        _, _ = _exec_cmd("/opt/netronome/bin/nfp-rtsym -n %d %s %s" % (self.nfp_num, sym, val))
         return
 
     def _sym_read(self, sym, length=None):
         """Write value(s) to symbol"""
         if length:
-            _, res_data = _exec_cmd("nfp-rtsym -n %d -l %d -R %s" %
+            _, res_data = _exec_cmd("/opt/netronome/bin/nfp-rtsym -n %d -l %d -R %s" %
                                     (self.nfp_num, length, sym))
         else:
-            _, res_data = _exec_cmd("nfp-rtsym -n %d -R %s" %
+            _, res_data = _exec_cmd("/opt/netronome/bin/nfp-rtsym -n %d -R %s" %
                                     (self.nfp_num, sym))
         return res_data
 
     def _reload_fw(self):
         "Re-load the firmware image"
-        subprocess.call("nfp-nffw unload -n %d --ignore-debugger 2> /dev/null" %
+        subprocess.call("/opt/netronome/bin/nfp-nffw unload -n %d --ignore-debugger 2> /dev/null" %
                         self.nfp_num, shell=True)
-        subprocess.call("nfp-nffw %s load -n %d --ignore-debugger" %
+        subprocess.call("/opt/netronome/bin/nfp-nffw %s load -n %d --ignore-debugger" %
                         (self.fw_name, self.nfp_num), shell=True)
 
         self._get_symtab()
@@ -220,7 +221,7 @@ class NFPBench(object):
         # No need to re-read the symbol table on every FW load.
         if len(self.symtab):
             return
-        _, out = _exec_cmd("nfp-rtsym -n %d -L" % self.nfp_num)
+        _, out = _exec_cmd("/opt/netronome/bin/nfp-rtsym -n %d -L" % self.nfp_num)
         out = out.decode('ascii')
         for line in out.split("\n"):
             elems = line.split()

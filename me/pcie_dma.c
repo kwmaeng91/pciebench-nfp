@@ -85,7 +85,7 @@ pcie_dma_setup(__gpr struct nfp_pcie_dma_cmd *cmd,
         __xwrite struct nfp_pcie_dma_cfg cfg_wr;
         unsigned int mode_msk_inv;
         unsigned int mode;
-
+	unsigned int ii;
 
         /* We just write config register 0 and 1. no one else is using them */
         cfg.__raw = 0;
@@ -106,6 +106,10 @@ pcie_dma_setup(__gpr struct nfp_pcie_dma_cmd *cmd,
 
         cmd->cpp_token = 0;
         cmd->cpp_addr_hi = 0;
+	// KIWAN: TEST
+	for (ii = 0; ii < NFP_BUF_SZ64; ++ii) {
+		nfp_buf[ii] = 0x1122334455667788;
+	}
         cmd->cpp_addr_lo = (uint32_t)((uint64_t)nfp_buf & 0xffffffff) + d_off;
         /* On the 6k the length is length - 1 */
         cmd->length = len - 1;
