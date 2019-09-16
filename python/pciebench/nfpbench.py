@@ -65,16 +65,6 @@ def _exec_cmd(cmd):
 
     return ret, res_data
 
-def _thrash_cache():
-    """Attempt to trash the CPUs caches
-    Create an list of 32M entries and sort it
-    """
-    list1 = []
-    for i in range(0, 32 * 1024 * 1024):
-        list1.append(i)
-    _ = list1.sort(reverse=True)
-    return
-
 # Utility functions
 # We have pretty good python support for accessing the NFP, but these
 # are part of other packages.  Below we define a number of functions
@@ -105,26 +95,13 @@ class NFPBench(object):
     """A class to interact the pciebench firmware"""
 
     # Tests (Keep this in sync with enum pciebench_tests in pciebench.h)
-    LAT_CMD_RD = 1
-    LAT_CMD_WRRD = 2
-    LAT_DMA_RD = 3
-    LAT_DMA_WRRD = 4
     BW_DMA_RD = 5
     BW_DMA_WR = 6
     BW_DMA_RW = 7
 
-    TESTS = [LAT_CMD_RD, LAT_CMD_WRRD,
-             LAT_DMA_RD, LAT_DMA_WRRD,
-             BW_DMA_RD, BW_DMA_WR, BW_DMA_RW]
+    TESTS = [BW_DMA_RD, BW_DMA_WR, BW_DMA_RW]
 
-    LAT_TESTS = [LAT_CMD_RD, LAT_CMD_WRRD, LAT_DMA_RD, LAT_DMA_WRRD]
-    BW_TESTS = [BW_DMA_RD, BW_DMA_WR, BW_DMA_RW]
-
-    TEST_NAMES = {LAT_CMD_RD : "LAT_CMD_RD",
-                  LAT_CMD_WRRD : "LAT_CMD_WRRD",
-                  LAT_DMA_RD : "LAT_DMA_RD",
-                  LAT_DMA_WRRD : "LAT_DMA_WRRD",
-                  BW_DMA_RD : "BW_DMA_RD",
+    TEST_NAMES = {BW_DMA_RD : "BW_DMA_RD",
                   BW_DMA_WR : "BW_DMA_WR",
                   BW_DMA_RW : "BW_DMA_RW",
                   }
@@ -159,21 +136,15 @@ class NFPBench(object):
         self.freq_mhz = int(self.hwinfo['me.speed'])
         self.freq_hz = self.freq_mhz * 1000 * 1000
 
-        self.nfp6000 = self.hwinfo["chip.model"].startswith("NFP6") or \
-                       self.hwinfo["chip.model"].startswith("NFP4")
+	self.nfp6000 = True
+        #self.nfp6000 = self.hwinfo["chip.model"].startswith("NFP6") or \
+        #               self.hwinfo["chip.model"].startswith("NFP4")
 
-        if self.nfp6000:
-            _ME_TEST_CTRL = _NFP6000_ME_TEST_CTRL
-            _ME_TEST_PARAMS = _NFP6000_ME_TEST_PARAMS
-            _ME_TEST_RESULT = _NFP6000_ME_TEST_RESULT
-            _ME_DMA_ADDRS = _NFP6000_ME_DMA_ADDRS
-            _TEST_JOURNAL = _NFP6000_TEST_JOURNAL
-        else:
-            _ME_TEST_CTRL = _NFP3200_ME_TEST_CTRL
-            _ME_TEST_PARAMS = _NFP3200_ME_TEST_PARAMS
-            _ME_TEST_RESULT = _NFP3200_ME_TEST_RESULT
-            _ME_DMA_ADDRS = _NFP3200_ME_DMA_ADDRS
-            _TEST_JOURNAL = _NFP3200_TEST_JOURNAL
+        _ME_TEST_CTRL = _NFP6000_ME_TEST_CTRL
+        _ME_TEST_PARAMS = _NFP6000_ME_TEST_PARAMS
+        _ME_TEST_RESULT = _NFP6000_ME_TEST_RESULT
+        _ME_DMA_ADDRS = _NFP6000_ME_DMA_ADDRS
+        _TEST_JOURNAL = _NFP6000_TEST_JOURNAL
 
         if fwfile:
             self.fw_name = fwfile
@@ -236,24 +207,6 @@ class NFPBench(object):
             self.symtab[name] = _Symbol(off, size)
         return
 
-    def _warm_host(self, win_sz):
-        """Warm the host buffers for the given size"""
-        num_pages = int(math.ceil(win_sz / 4096.0))
-        cacheline = ""
-        for i in range(0, 16):
-            cacheline += struct.pack('I', 0xf00d0000 + i)
-        page = ""
-        for i in range(0, 64):
-            page += cacheline
-
-        f_dma = open(_PROC_BUFFER % self.nfp_num, 'wb')
-        for i in [0, 1, 2, 3]:
-            f_dma.seek(0)
-            for i in range(0, num_pages):
-                f_dma.write(page)
-        f_dma.close()
-        return
-
     def _set_dma_addrs(self):
         """The kernel module exports a list of memory regions to be
         accessed by the NFP.  Read the list, validate it and write it
@@ -266,7 +219,6 @@ class NFPBench(object):
             addr = int(line, 0)
             dma_addrs.append(addr)
         inf.close()
-
         inf = open(_PROC_BUF_SZ % self.nfp_num, 'r')
         for line in inf:
             buf_sz = int(line)
@@ -393,8 +345,8 @@ class NFPBench(object):
         Returns time difference (in ME cycles) and a tuple of test results
         """
 
-        if test_no not in self.TESTS:
-            err("Unknown test number %d" % test_no)
+	# Param0: cache flag(?), Param 1: size
+        #param 2: window size (?), param 3: h_off? param 4: d_off?
         pm0 = 0
         pm1 = 0
         pm2 = 0
@@ -414,27 +366,14 @@ class NFPBench(object):
         dbg("Test: %d p0=%d p1=%d p2=%d p3=%d p4=%d" %
             (test_no, pm0, pm1, pm2, pm3, pm4))
 
-        self._reload_fw()
-        self._set_dma_addrs()
         self._set_params(pm0, pm1, pm2, pm3, pm4)
 
         # If we have a C helper, use it
-        if self.helper:
-            cmd = self.helper + " -n %d -c %s -t %d -w %d" % \
-                  (self.nfp_num, _ME_TEST_CTRL, test_no, warm)
-            ret, _ = _exec_cmd(cmd)
-            if not ret == 0:
-                err("Test helper failed with %d" % (ret))
-        else:
-            _thrash_cache()
-
-            # Try to warm the cache, a page at a time
-            if warm > 0:
-                self._warm_host(warm)
-
-            self._set_test_ctrl(test_no)
-            while self._get_test_ctrl() > 0:
-                time.sleep(5)
+        cmd = self.helper + " -n %d -c %s -t %d -w %d" % \
+	    (self.nfp_num, _ME_TEST_CTRL, test_no, warm)
+        ret, _ = _exec_cmd(cmd)
+        if not ret == 0:
+	    err("Test helper failed with %d" % (ret))
 
         ret = self._get_test_ctrl()
         if ret < 0:
@@ -445,132 +384,7 @@ class NFPBench(object):
 
         return diff, res
 
-    # Output format for latency tests
-    lat_fmt = [("Test", 12, "%s"), # Benchmark name
-               ("PAT", 4, "%s"),   # Access pattern
-               ("Cache", 7, "%s"), # Cache warming/thrashing
-               ("HO", 2, "%s"),    # Host offset
-               ("DO", 2, "%s"),    # Device offset
-               ("WinSZ", 5, "%z"), # Window size
-               ("SZ", 4, "%d"),    # Transaction size
-               ("", 0, ""),
-               ("TAvg", 6, "%.1f"), ("Avg", 6, "%.1f"),
-               ("Med", 5, "%d"),
-               ("Min", 5, "%d"), ("Max", 5, "%d"),
-               ("95%", 5, "%d"), ("99.9%", 5, "%d"),
-               ("", 0, ""),
-               ("TAvg(ns)", 8, "%.1f"), ("Avg(ns)", 7, "%.1f"),
-               ("Med(ns)", 7, "%d"),
-               ("Min(ns)", 7, "%d"), ("Max(ns)", 7, "%d"),
-               ("95%(ns)", 7, "%d"), ("99.9%(ns)", 9, "%d"),
-               ("", 0, ""),
-               ("#outliers", 10, "%d"), ("#samples", 10, "%d"),
-               ]
-
-    def lat_test(self, twr, test_no, flags, win_sz, trans_sz, h_off, d_off):
-        """Run a latency test:
-        @twr:      TableWriter object set up with @lat_fmt
-        @test_no:  Test to run. One of @LAT_TESTS
-        @flags:    Test flags. Combination of @FLAGS*
-        @win_sz:   Window size to access
-        @trans_sz: Transaction size
-        @h_off:    Host offset (from the start of a 64B cache line)
-        @d_off:    Device offset (from the start of a 64B cache line)
-
-        Returns a list of individual latencies for further analysis
-        """
-        # Sanity checks
-        if not test_no in self.LAT_TESTS:
-            err("%s is not a latency test" % test_no)
-        if (test_no == self.LAT_CMD_RD) or (test_no == self.LAT_CMD_WRRD):
-            if (trans_sz % 4) or (trans_sz > 64):
-                err("Wrong argument for CMD latency test: %d" % (trans_sz))
-        if (test_no == self.LAT_DMA_RD) or (test_no == self.LAT_DMA_WRRD):
-            if self.nfp6000 and (trans_sz > 4096):
-                err("For NFP-6000 the transaction must be less than 4096")
-            if not self.nfp6000 and (trans_sz > 2048):
-                err("For NFP-3200 the transaction must be less than 2048")
-        if win_sz % 64:
-            err("Window size must be a multiple of 64. Was %d" % win_sz)
-        if flags & ~self.FLAGS:
-            err("Illegal flags %#08x (valid %#08x)" % (flags, self.FLAGS))
-        if bin(flags & self._FLAGS_CACHE).count("1") > 1:
-            err("Only one cache related flag may be set")
-
-
-        dbg("LatTest: %d flags=%d win_sz=%d trans_sz=%d  h_off=%d d_off=%d " %
-            (test_no, flags, win_sz, trans_sz, h_off, d_off))
-
-        # Run the test
-        cycles, res = self.run_test(
-            test_no, [flags, trans_sz, win_sz, h_off, d_off],
-            win_sz if flags & self.FLAGS_HOSTWARM else 0)
-
-        samples = res[0]
-
-        # read timestamps and convert to cycles
-        timestamps = self.get_journal(samples, nullcheck=True)
-        lat_cyc = [x * 16 for x in timestamps]
-
-        # Calculate some stats
-        stats = ListStats(lat_cyc)
-
-        tavg_cyc = cycles / samples
-        avg_cyc = stats.avg()
-        med_cyc = stats.median()
-        min_cyc = stats.min()
-        max_cyc = stats.max()
-        per95_cyc = stats.percentile(95)
-        per99_cyc = stats.percentile(99.9)
-
-        tavg_ns = self.cyc2ns(tavg_cyc)
-        avg_ns = self.cyc2ns(avg_cyc)
-        med_ns = self.cyc2ns(med_cyc)
-        min_ns = self.cyc2ns(min_cyc)
-        max_ns = self.cyc2ns(max_cyc)
-        per95_ns = self.cyc2ns(per95_cyc)
-        per99_ns = self.cyc2ns(per99_cyc)
-
-        # Outliers are values three times the 95th percentile
-        outliers = sum(i > (3 * per95_cyc) for i in lat_cyc)
-
-        cache_str = "Cold"
-        if flags & self.FLAGS_WARM:
-            cache_str = "DWarm"
-        if flags & self.FLAGS_THRASH:
-            cache_str = "DThrash"
-        if flags & self.FLAGS_HOSTWARM:
-            cache_str = "HWarm"
-
-        twr.out((
-            self.TEST_NAMES[test_no],
-            "Rand" if flags & self.FLAGS_RANDOM else "Seq",
-            cache_str,
-            h_off, d_off,
-            win_sz, trans_sz,
-            tavg_cyc, avg_cyc, med_cyc, min_cyc, max_cyc, per95_cyc, per99_cyc,
-            tavg_ns, avg_ns, med_ns, min_ns, max_ns, per95_ns, per99_ns,
-            outliers, samples))
-
-        return stats
-
-    # Output format for BW tests
-    bw_fmt = [("Test", 10, "%s"),   # Benchmark Name
-              ("PAT", 4, "%s"),     # Access pattern
-              ("Cache", 7, "%s"),   # Cache warming/thrashing
-              ("HO", 2, "%s"),      # Host offset
-              ("DO", 2, "%s"),      # Device offset
-              ("WinSZ", 5, "%z"),   # Window size
-              ("SZ", 4, "%d"),      # Transaction size
-              ("", 0, ""),
-              ("Time(cyc)", 11, "%d"), ("Time", 9, "%t"),
-              ("Bytes", 8, "%z"), ("Trans", 9, "%d"),
-              ("", 0, ""),
-              ("BW (GB/s)", 9, "%.3f"),
-              ("Trans/s", 10, "%.1f"),
-              ]
-
-    def bw_test(self, twr, test_no, flags, win_sz, trans_sz, h_off, d_off):
+    def dma_test(self, test_no, flags, win_sz, trans_sz, h_off, d_off):
         """Run a bandwidth test:
         @twr:      TableWriter object set up with @bw_fmt
         @test_no:  Test to run. One of @LAT_TESTS
@@ -583,12 +397,10 @@ class NFPBench(object):
         Returns a list of individual latencies for further analysis
         """
         # Sanity checks
-        if not test_no in self.BW_TESTS:
+        if not test_no in self.TESTS:
             err("%s is not a bandwidth test" % test_no)
         if self.nfp6000 and (trans_sz > 4096):
             err("For NFP-6000 the transaction must be less than 4096")
-        if not self.nfp6000 and (trans_sz > 2048):
-            err("For NFP-3200 the transaction must be less than 2048")
         if win_sz % 64:
             err("Window size must be a multiple of 64. Was %d" % win_sz)
         if flags & ~self.FLAGS:
@@ -600,31 +412,4 @@ class NFPBench(object):
             test_no, [flags, trans_sz, win_sz, h_off, d_off],
             win_sz if flags & self.FLAGS_HOSTWARM else 0)
 
-        trans = res[0]
-        if test_no == self.BW_DMA_RW:
-            trans = trans / 2
-        tbytes = trans_sz * trans
-
-        tavg_cyc = cycles
-        tavg_ns = self.cyc2ns(tavg_cyc)
-
-        bw = 8.0 * tbytes / tavg_ns
-        rate = 1.0 * trans / (tavg_ns / (1000 * 1000 * 1000))
-
-        cache_str = "Cold"
-        if flags & self.FLAGS_WARM:
-            cache_str = "DWarm"
-        if flags & self.FLAGS_THRASH:
-            cache_str = "DThrash"
-        if flags & self.FLAGS_HOSTWARM:
-            cache_str = "HWarm"
-
-        twr.out((
-            self.TEST_NAMES[test_no],
-            "Rand" if flags & self.FLAGS_RANDOM else "Seq",
-            cache_str,
-            h_off, d_off,
-            win_sz, trans_sz,
-            tavg_cyc, tavg_ns, tbytes, trans,
-            bw, rate))
         return

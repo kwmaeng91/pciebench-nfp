@@ -26,48 +26,6 @@ from pciebench.stats import histo2cdf
 import pciebench.debug
 import pciebench.sysinfo
 
-def run_dbg_wr(nfp, win_sz, trans_sz,
-               h_off, d_off, cache_flags, outdir):
-
-    test_no = nfp.BW_DMA_WR
-    twr = TableWriter(nfp.bw_fmt)
-    twr.open(outdir + "dbg_bw", TableWriter.ALL)
-
-    flags = cache_flags
-
-    #if rnd:
-    #    flags |= nfp.FLAGS_RANDOM
-
-    nfp.bw_test(twr, test_no, flags, win_sz, trans_sz, h_off, d_off)
-    twr.close(TableWriter.ALL)
-
-
-
-def run_dbg_bw(nfp, wr_flag, rw_flag, win_sz, trans_sz,
-               h_off, d_off, rnd, cache_flags, outdir):
-    """Run bandwidth debug test"""
-
-    if wr_flag and rw_flag:
-        raise Exception("Illegal combination of flags")
-
-    if wr_flag:
-        test_no = nfp.BW_DMA_WR
-    elif rw_flag:
-        test_no = nfp.BW_DMA_RW
-    else:
-        test_no = nfp.BW_DMA_RD
-
-    twr = TableWriter(nfp.bw_fmt)
-    twr.open(outdir + "dbg_bw", TableWriter.ALL)
-
-    flags = cache_flags
-
-    if rnd:
-        flags |= nfp.FLAGS_RANDOM
-
-    nfp.bw_test(twr, test_no, flags, win_sz, trans_sz, h_off, d_off)
-    twr.close(TableWriter.ALL)
-
 def main():
     """Main function"""
 
@@ -107,35 +65,6 @@ def main():
     parser.add_option('--dbg-doff', type='int',
                       default=0, metavar='DOFF', dest='dbg_doff',
                       help='Debug: Device offset (default 0)')
-
-    #parser.add_option('--dbg-wrrd',
-    #                  action="store_true", dest="dbg_lat_wrrd", default=False,
-    #                  help='Debug LAT: Use write followed by read ' + \
-    #                  '(default read)')
-    #parser.add_option('--dbg-wr',
-    #                  action="store_true", dest="dbg_bw_wr", default=False,
-    #                  help='Debug BW: Use DMA writes (default read)')
-    #parser.add_option('--dbg-rw',
-    #                  action="store_true", dest="dbg_bw_rw", default=False,
-    #                  help='Debug BW: Alternate between DMA read write')
-    #parser.add_option('--dbg-rnd',
-    #                  action="store_true", dest="dbg_rnd", default=False,
-    #                  help='Debug: Random addressing (default sequential)')
-    #parser.add_option('--dbg-long',
-    #                  action="store_true", dest="dbg_long", default=False,
-    #                  help='Debug: Do long run')
-    #parser.add_option('--dbg-details',
-    #                  action="store_true", dest="dbg_details", default=False,
-    #                  help='Debug: Run the details test only')
-    #parser.add_option('--dbg-cache',
-    #                  default=None, metavar='CACHE', dest='dbg_cache',
-    #                  help='Debug: Cache settings hwarm|dwarm|thrash ' + \
-    #                       '(default None)')
-    #parser.add_option('--dbg-mem',
-    #                  action='store_true', dest='dbg_mem', default=False,
-    #                  help='Debug: Hit the same cachelines over and over ' + \
-    #                       '[window = transfersize] (default None)')
-
     parser.add_option("-v", '--verbose',
                       action="count", help='set the verbosity level')
 
@@ -150,22 +79,30 @@ def main():
 
     # System information
     pciebench.sysinfo.collect(outdir, options.nfp)
-
     nfp = NFPBench(options.nfp, options.fwfile, options.helper)
 
-    cache_vals = {'hwarm' : nfp.FLAGS_HOSTWARM,
-                  'dwarm' : nfp.FLAGS_WARM,
-                  'thrash' : nfp.FLAGS_THRASH}
+    # Reload fw
+    nfp._reload_fw()
+    # Set up a page
+    # (currently, this is done separately)
 
-    cache_flags = 0
-    run_dbg_wr(nfp,
-	   options.dbg_winsz, options.dbg_transsz,
-	   options.dbg_hoff, options.dbg_doff,
-	   cache_flags, outdir)
-#    run_dbg_bw(nfp, options.dbg_bw_wr, options.dbg_bw_rw,
-#	   options.dbg_winsz, options.dbg_transsz,
-#	   options.dbg_hoff, options.dbg_doff,
-#	   options.dbg_rnd, cache_flags, outdir)
+    # Set dma addr to the ME
+    # (currently, this uses the separately allocated page addrs)
+    nfp._set_dma_addrs()
+
+    while True:
+        pass
+    # Up to here is the real role of the server. From here, the ME has to
+    # automatically initiate DMA from its side.
+    # for testing purpose, however,
+    # we can control DMA read / write with python.
+
+    # Test DMA
+    #test_no = nfp.BW_DMA_WR # RD / RW
+    #flags = 0
+    #nfp.dma_test(test_no, flags, options.dbg_winsz, options.dbg_transsz,
+    #    options.dbg_hoff, options.dbg_doff)
+
     return
 
 if __name__ == '__main__':
